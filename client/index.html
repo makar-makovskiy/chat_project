@@ -1,58 +1,133 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Socket Login Example</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket Login Example</title>
 </head>
 <body>
-      <input type="text" id="userIdInput" placeholder="Введите ваш ID">
-      <button id="loginButton">Войти</button>
-      <button id="ExitButton">Выйти</button>
-      <div id="status"></div>
+    <input type="text" id="userIdInput" placeholder="Введите ваш ID">
+    <label for="cars">Выберите комнату:</label>
+    <select id="roomName">
+        <option value="Technology">Технологии</option>
+        <option value="Cars">Машины</option>
+        <option value="Games">Игры</option>
+        <option value="new">Создать новую комнату</option>
+    </select>
+    <input type="text" id="newRoomName" placeholder="Название новой комнаты" style="display: none;">
+    <button id="loginButton">Войти</button>
+    <button id="ExitButton">Выйти</button>
+    <div id="status"></div>
+
+    <div id="message_status"></div>
+    
+    <div id="roomInterier" style="display: none;">
+    <ul id="messages"></ul>
+      <input type="text "id="messageInput" placeholder="Введите сообщение"/>
+      <button id="messageButton">Send</button>
+    </div>
+    
 
 <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
-<script>
-      let socket = null;
-
-      document.getElementById('loginButton').onclick = function() {
-            const userId = document.getElementById('userIdInput').value.trim();
-            if (!userId) {
-                  document.getElementById('status').innerText = "Введите ID!";
-                  return;
-            }
-            document.getElementById('status').innerText = "Подключение...";
-            
-            // Открыть сокет
-            socket = io('http://localhost:3000');
-            
-            socket.on('connect', function() {
-                  document.getElementById('status').innerText = "Успешно! Ваш ID: " + userId;
-
-                  // Отправить ID в событии login
-                  socket.emit('login', userId);
-            });
-
-            socket.on('message', function(message) {
-                  console.log("Сервер:", message);
-            });
-
-            socket.on('userInfo', function(userData){
-                  console.log('Информация пользователя:', userData);
-            });
-
-            socket.on('broadcasted', function(message) {
-                  console.log("Broadcast:", message);
-            });
-        };
-
-         document.getElementById('ExitButton').onclick = function() {
-            const userId = document.getElementById('userIdInput').value.trim();
-            if (socket && userId) {
-                socket.emit('logout', userId)
-                document.getElementById('status').innerText = "Вы вышли"
-            }
-        };
-</script>
+   <script>
+    socket = null;
+    let currentUserId = '';
+   
+   document.getElementById('roomName').addEventListener('change', function() { 
+       const newRoomInput = document.getElementById('newRoomName');
+       if (this.value === 'new') {
+           newRoomInput.style.display = 'block';
+       } else {
+           newRoomInput.style.display = 'none';
+       }
+   });
+   
+   document.getElementById('loginButton').onclick = function() {
+       const userId = document.getElementById('userIdInput').value.trim();
+       if (!userId) {
+           document.getElementById('status').innerText = "Введите ID!";
+           return;
+       } 
+   
+       currentUserId = userId;
+   
+       let roomName = document.getElementById('roomName').value;
+       
+       if (roomName === 'new') {
+           roomName = document.getElementById('newRoomName').value.trim();
+           if (!roomName) {
+               document.getElementById('status').innerText = "Введите название комнаты!";
+               return;
+           }
+       }
+   
+       document.getElementById('status').innerText = "Подключение...";
+   
+       socket = io('http://localhost:3000');
+   
+       socket.on('connect', function() {
+           document.getElementById('status').innerText = "Успешно! Ваш ID: " + userId + ` Ваша комната ${roomName}`;
+           document.getElementById('roomInterier').style.display = 'block';
+           socket.emit('login', { userId, roomName });
+       });
+   
+       socket.on('userMessage', (data) => {
+           const messagesList = document.getElementById('messages');
+           const messageItem = document.createElement('li');
+           messageItem.innerHTML = `<span>${data.name}</span>: ${data.message}`;
+           messagesList.appendChild(messageItem);
+       });
+   
+       socket.on('message', function(message) {
+           console.log("Сервер:", message);
+       });
+   
+       socket.on('userInfo', function(userData){
+           console.log('Информация пользователя:', userData);
+       });
+   
+       socket.on('broadcasted', function(message) {
+           console.log("Broadcast:", message);
+       });
+   
+       socket.on("joinedRoom", function(data) {
+           console.log("Присоединился к комнате:", data);
+           document.getElementById('status').innerText = "Комната: " + data.roomName;
+       });
+   
+       socket.on("roomMessage", function(data) {
+           console.log("Сообщение для комнаты", data.room + ":", data.message);
+       });
+   };
+   
+   document.getElementById('messageButton').onclick = function() { 
+       const messageInput = document.getElementById('messageInput');
+       const userMessage = messageInput.value.trim();
+       
+       if(!userMessage) {
+           document.getElementById('message_status').innerText = "Введите сообщение";
+           return;
+       }
+       
+       if (socket && currentUserId) {
+           socket.emit('userMessage', {
+               message: userMessage, 
+               userId: currentUserId
+           });
+           
+           messageInput.value = '';
+           document.getElementById('message_status').innerText = '';
+       }
+   };
+   
+   document.getElementById('ExitButton').onclick = function() {
+       if (socket && currentUserId) {
+           socket.emit('logout', currentUserId);
+           document.getElementById('roomInterier').style.display = 'none';
+           document.getElementById('status').innerText = "Вы вышли";
+           currentUserId = '';
+       }
+   };
+   </script>
 </body>
 </html>

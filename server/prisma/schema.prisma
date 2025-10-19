@@ -18,5 +18,6 @@ model User {
   id            Int       @id @default(autoincrement())
   user_id       String    @unique
   online        Boolean   @default(false)
+  now_room      String  
   created_at    DateTime  @default(now())
 } 
