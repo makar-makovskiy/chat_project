@@ -1,133 +1,311 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Socket Login Example</title>
+    <title>Chat</title>
 </head>
 <body>
-    <input type="text" id="userIdInput" placeholder="Введите ваш ID">
-    <label for="cars">Выберите комнату:</label>
+    <input type="text" id="userIdInput" placeholder="Ваш ID">
     <select id="roomName">
         <option value="Technology">Технологии</option>
         <option value="Cars">Машины</option>
         <option value="Games">Игры</option>
-        <option value="new">Создать новую комнату</option>
+        <option value="new">Новая комната</option>
     </select>
-    <input type="text" id="newRoomName" placeholder="Название новой комнаты" style="display: none;">
+    <input type="text" id="newRoomName" placeholder="Название комнаты" style="display: none;">
     <button id="loginButton">Войти</button>
     <button id="ExitButton">Выйти</button>
     <div id="status"></div>
 
-    <div id="message_status"></div>
-    
-    <div id="roomInterier" style="display: none;">
-    <ul id="messages"></ul>
-      <input type="text "id="messageInput" placeholder="Введите сообщение"/>
-      <button id="messageButton">Send</button>
+ 
+    <div id="moderatorPanel" style="display: none;">
+        <h4>Панель модератора</h4>
+        <input type="text" id="targetUserInput" placeholder="ID пользователя">
+        <button id="muteButton">Замутить</button>
+        <button id="unmuteButton">Размутить</button>
+        <button id="kickButton">Исключить</button>
     </div>
-    
+
+    <div id="roomInterier" style="display: none;">
+        <div>Пользователи в комнате:</div>
+        <div id="usersContainer"></div>
+        
+        <div id="messages"></div>
+        <input type="text" id="messageInput" placeholder="Сообщение"/>
+        <button id="messageButton">Отправить</button>
+    </div>
 
 <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
-   <script>
-    socket = null;
+<script>
+    let socket = null;
     let currentUserId = '';
-   
-   document.getElementById('roomName').addEventListener('change', function() { 
-       const newRoomInput = document.getElementById('newRoomName');
-       if (this.value === 'new') {
-           newRoomInput.style.display = 'block';
-       } else {
-           newRoomInput.style.display = 'none';
-       }
-   });
-   
-   document.getElementById('loginButton').onclick = function() {
-       const userId = document.getElementById('userIdInput').value.trim();
-       if (!userId) {
-           document.getElementById('status').innerText = "Введите ID!";
-           return;
-       } 
-   
-       currentUserId = userId;
-   
-       let roomName = document.getElementById('roomName').value;
-       
-       if (roomName === 'new') {
-           roomName = document.getElementById('newRoomName').value.trim();
-           if (!roomName) {
-               document.getElementById('status').innerText = "Введите название комнаты!";
-               return;
-           }
-       }
-   
-       document.getElementById('status').innerText = "Подключение...";
-   
-       socket = io('http://localhost:3000');
-   
-       socket.on('connect', function() {
-           document.getElementById('status').innerText = "Успешно! Ваш ID: " + userId + ` Ваша комната ${roomName}`;
-           document.getElementById('roomInterier').style.display = 'block';
-           socket.emit('login', { userId, roomName });
-       });
-   
-       socket.on('userMessage', (data) => {
-           const messagesList = document.getElementById('messages');
-           const messageItem = document.createElement('li');
-           messageItem.innerHTML = `<span>${data.name}</span>: ${data.message}`;
-           messagesList.appendChild(messageItem);
-       });
-   
-       socket.on('message', function(message) {
-           console.log("Сервер:", message);
-       });
-   
-       socket.on('userInfo', function(userData){
-           console.log('Информация пользователя:', userData);
-       });
-   
-       socket.on('broadcasted', function(message) {
-           console.log("Broadcast:", message);
-       });
-   
-       socket.on("joinedRoom", function(data) {
-           console.log("Присоединился к комнате:", data);
-           document.getElementById('status').innerText = "Комната: " + data.roomName;
-       });
-   
-       socket.on("roomMessage", function(data) {
-           console.log("Сообщение для комнаты", data.room + ":", data.message);
-       });
-   };
-   
-   document.getElementById('messageButton').onclick = function() { 
-       const messageInput = document.getElementById('messageInput');
-       const userMessage = messageInput.value.trim();
-       
-       if(!userMessage) {
-           document.getElementById('message_status').innerText = "Введите сообщение";
-           return;
-       }
-       
-       if (socket && currentUserId) {
-           socket.emit('userMessage', {
-               message: userMessage, 
-               userId: currentUserId
-           });
+    let currentUserRole = 1;
+    let typingTimer = null;
+    
+    document.getElementById('roomName').addEventListener('change', function() { 
+        const newRoomInput = document.getElementById('newRoomName');
+        if (this.value === 'new') {
+            newRoomInput.style.display = 'block';
+        } else {
+            newRoomInput.style.display = 'none';
+        }
+    });
+    
+    document.getElementById('loginButton').onclick = function() {
+        const userId = document.getElementById('userIdInput').value.trim();
+        if (!userId) {
+            document.getElementById('status').innerText = "Введите ID!";
+            return;
+        } 
+    
+        currentUserId = userId;
+    
+        let roomName = document.getElementById('roomName').value;
+        
+        if (roomName === 'new') {
+            roomName = document.getElementById('newRoomName').value.trim();
+            if (!roomName) {
+                document.getElementById('status').innerText = "Введите название комнаты!";
+                return;
+            }
+        }
+    
+        document.getElementById('status').innerText = "Подключение...";
+    
+        if (socket) {
+            socket.disconnect();
+            socket = null;
+        }
+    
+        socket = io('http://localhost:3000');
+    
+        socket.on('connect', function() {
+            document.getElementById('status').innerText = "Успешно! ID: " + userId + ` Комната: ${roomName}`;
+            document.getElementById('roomInterier').style.display = 'block';
+            socket.emit('login', { userId, roomName });
+        });
+    
+        socket.on('userMessage', (data) => {
+            addMessageToChat(data.name, data.message);
+        });
+    
+        socket.on('roomHistory', (history) => {
+            const messagesList = document.getElementById('messages');
+            messagesList.innerHTML = '';
+            
+            history.forEach(msg => {
+                addMessageToChat(msg.user_id, msg.text);
+            });
+        });
+    
+        socket.on('joinedRoom', function(data) {
+            document.getElementById('status').innerText = "Комната: " + data.roomName;
+            currentUserRole = data.role;
+            
+         
+            if (data.role === 2) {
+                document.getElementById('moderatorPanel').style.display = 'block';
+            }
+            
+            if (data.isMuted) {
+                document.getElementById('messageInput').disabled = true;
+                document.getElementById('messageInput').placeholder = "Вы замьючены";
+            }
+        });
+    
+        socket.on('userStatusChanged', function(userData){
+            updateUserStatus(userData.user_id, userData.status, userData.role, userData.is_muted);
+        });
+    
+        socket.on('roomUsers', function(users) {
+            const container = document.getElementById('usersContainer');
+            container.innerHTML = '';
+            
+            users.forEach(user => {
+                addUserToDisplay(user.user_id, user.status, user.role, user.is_muted);
+            });
+        });
+        
+        socket.on('errorMessage', function(data) {
+            alert(data.message);
+        });
+        
+        socket.on('userMuted', function(data) {
+            if (data.userId === currentUserId) {
+                if (data.muted) {
+                    document.getElementById('messageInput').disabled = true;
+                    document.getElementById('messageInput').placeholder = "Вы замьючены";
+                } else {
+                    document.getElementById('messageInput').disabled = false;
+                    document.getElementById('messageInput').placeholder = "Сообщение";
+                }
+            }
            
-           messageInput.value = '';
-           document.getElementById('message_status').innerText = '';
-       }
-   };
-   
-   document.getElementById('ExitButton').onclick = function() {
-       if (socket && currentUserId) {
-           socket.emit('logout', currentUserId);
-           document.getElementById('roomInterier').style.display = 'none';
-           document.getElementById('status').innerText = "Вы вышли";
-           currentUserId = '';
-       }
-   };
-   </script>
+            updateUserMuteStatus(data.userId, data.muted);
+        });
+        
+        socket.on('userKicked', function(data) {
+            if (data.userId === currentUserId) {
+                alert('Вас исключили из комнаты');
+                document.getElementById('roomInterier').style.display = 'none';
+                document.getElementById('moderatorPanel').style.display = 'none';
+            }
+        });
+        
+        socket.on('roomMessage', function(data) {
+            console.log("Сообщение для комнаты", data.room + ":", data.message);
+        });
+    };
+
+    
+    document.getElementById('muteButton').onclick = function() {
+        const targetUserId = document.getElementById('targetUserInput').value.trim();
+        
+        if (!targetUserId) {
+            alert('Введите ID пользователя');
+            return;
+        }
+        
+        if (socket && currentUserId) {
+            socket.emit('muteUser', {
+                targetUserId: targetUserId,
+                moderatorId: currentUserId
+            });
+        }
+    };
+    
+    document.getElementById('unmuteButton').onclick = function() {
+        const targetUserId = document.getElementById('targetUserInput').value.trim();
+        
+        if (!targetUserId) {
+            alert('Введите ID пользователя');
+            return;
+        }
+        
+        if (socket && currentUserId) {
+            socket.emit('unmuteUser', {
+                targetUserId: targetUserId,
+                moderatorId: currentUserId
+            });
+        }
+    };
+    
+    document.getElementById('kickButton').onclick = function() {
+        const targetUserId = document.getElementById('targetUserInput').value.trim();
+        
+        if (!targetUserId) {
+            alert('Введите ID пользователя');
+            return;
+        }
+        
+        if (socket && currentUserId) {
+            socket.emit('kickUser', {
+                targetUserId: targetUserId,
+                moderatorId: currentUserId
+            });
+        }
+    };
+
+    document.getElementById('messageInput').addEventListener('input', function() {
+        if (socket && currentUserId) {
+            socket.emit('typing', { 
+                userId: currentUserId, 
+                isTyping: true 
+            });
+            
+            if (typingTimer) {
+                clearTimeout(typingTimer);
+            }
+            
+            typingTimer = setTimeout(() => {
+                if (socket && currentUserId) {
+                    socket.emit('typing', { 
+                        userId: currentUserId, 
+                        isTyping: false 
+                    });
+                }
+            }, 2000);
+        }
+    });
+
+    document.getElementById('messageButton').onclick = function() { 
+        const messageInput = document.getElementById('messageInput');
+        const userMessage = messageInput.value.trim();
+        
+        if(!userMessage) return;
+        
+        if (socket && currentUserId) {
+            socket.emit('userMessage', {
+                message: userMessage, 
+                userId: currentUserId
+            });
+            
+            messageInput.value = '';
+            
+            if (typingTimer) {
+                clearTimeout(typingTimer);
+                typingTimer = null;
+            }
+        }
+    };
+    
+    document.getElementById('ExitButton').onclick = function() {
+        if (socket && currentUserId) {
+            socket.emit('logout', currentUserId);
+            socket.disconnect();
+            document.getElementById('roomInterier').style.display = 'none';
+            document.getElementById('moderatorPanel').style.display = 'none';
+            document.getElementById('status').innerText = "Вы вышли";
+            document.getElementById('messages').innerHTML = '';
+            document.getElementById('usersContainer').innerHTML = '';
+            currentUserId = '';
+            socket = null;
+        }
+    };
+
+    function addMessageToChat(userId, message) {
+        const messagesList = document.getElementById('messages');
+        const messageItem = document.createElement('div');
+        messageItem.innerHTML = `<strong>${userId}:</strong> ${message}`;
+        messagesList.appendChild(messageItem);
+        messagesList.scrollTop = messagesList.scrollHeight;
+    }
+    
+    function addUserToDisplay(userId, status, role, is_muted) {
+        const container = document.getElementById('usersContainer');
+        let userElement = document.getElementById(`user-${userId}`);
+        
+        if (!userElement) {
+            userElement = document.createElement('div');
+            userElement.id = `user-${userId}`;
+            container.appendChild(userElement);
+        }
+        
+        const roleText = role === 2 ? ' (модератор)' : ' (участник)';
+        const muteText = is_muted ? ' (замьючен)' : '';
+        userElement.innerHTML = `${userId}${roleText}${muteText} - ${getStatusText(status)}`;
+    }
+    
+    function updateUserStatus(userId, status, role, is_muted) {
+        addUserToDisplay(userId, status, role, is_muted);
+    }
+    
+    function updateUserMuteStatus(userId, isMuted) {
+        const userElement = document.getElementById(`user-${userId}`);
+        if (userElement) {
+            const currentHTML = userElement.innerHTML;
+            const newHTML = currentHTML.replace(/ \(замьючен\)/, '') + (isMuted ? ' (замьючен)' : '');
+            userElement.innerHTML = newHTML;
+        }
+    }
+    
+    function getStatusText(status) {
+        switch(status) {
+            case 'online': return 'Онлайн';
+            case 'typing': return 'Печатает...';
+            case 'offline': return 'Не в сети';
+            default: return status;
+        }
+    }
+</script>
 </body>
 </html>

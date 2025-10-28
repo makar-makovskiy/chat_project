@@ -17,7 +17,21 @@ datasource db {
 model User {
   id            Int       @id @default(autoincrement())
   user_id       String    @unique
-  online        Boolean   @default(false)
+  status        String    @default("offline")
   now_room      String  
+  role          Int       @default(1) 
+  is_muted      Boolean   @default(false) 
   created_at    DateTime  @default(now())
-} 
+  
+  messages      Message[]
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  user_id   String
+  room      String
+  text      String
+  created_at DateTime @default(now())
+  
+  user      User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+}
